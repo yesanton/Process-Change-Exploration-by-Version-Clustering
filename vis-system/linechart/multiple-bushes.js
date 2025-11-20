@@ -39,7 +39,7 @@ function drawLineplot(data) {
     .range([0, config.width]);
 
   const axis = d3.axisBottom(x)
-    .ticks(Math.min(9, data.timestamps.length))
+    .ticks(Math.min(14, data.timestamps.length))
     .tickFormat((d, i, nodes) => {
       const formatterFull = d3.timeFormat("%b %Y");
       const formatterEdge = d3.timeFormat("%Y");
@@ -48,7 +48,7 @@ function drawLineplot(data) {
       }
       return formatterFull(d);
     })
-    .tickPadding(8);
+    .tickPadding(6);
 
   config.svg.append("g")
     .attr("transform", "translate(0," + (config.height + 1) + ")")

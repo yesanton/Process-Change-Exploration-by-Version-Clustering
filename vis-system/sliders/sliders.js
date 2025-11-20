@@ -2,7 +2,7 @@
 
 const div_sizes = document.getElementById('SliderDivId1').getBoundingClientRect();
 const sliderHeight = Math.min(div_sizes.height - 70, Math.max(220, div_sizes.height * 0.76));
-const sliderYOffset = (div_sizes.height - sliderHeight) / 2 + 22; // breathing room for labels
+const sliderYOffset = (div_sizes.height - sliderHeight) / 2 - 18; // breathing room for labels
 const sharedColors = ['#0ea5e9', '#6366f1'];
 
 function applySliderStyle(svg, title, colors) {
@@ -47,10 +47,11 @@ function applySliderStyle(svg, title, colors) {
         .attr('stroke-width', 24);
 
     svg.selectAll('.handle')
-        .attr('r', 9)
-        .attr('fill', '#ffffff')
-        .attr('stroke', colors[1])
-        .attr('stroke-width', 2.2)
+        .attr('d', d3.symbol().type(d3.symbolCircle).size(220))
+        .attr('fill', '#6b7280')       // toned-down gray handle
+        .attr('stroke', '#4b5563')     // slightly darker edge
+        .attr('stroke-width', 1)
+        .attr('opacity', 0.92)
         .attr('filter', `url(#${gradientId}-shadow)`);
 
     svg.selectAll('.tick text')
