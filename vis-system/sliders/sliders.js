@@ -1,8 +1,95 @@
 // for further help with sliders, documentation is here https://github.com/johnwalley/d3-simple-slider
 
-console.log('in the making slider code')
+const div_sizes = document.getElementById('SliderDivId1').getBoundingClientRect();
+const sliderHeight = Math.min(div_sizes.height - 70, Math.max(220, div_sizes.height * 0.76));
+const sliderYOffset = (div_sizes.height - sliderHeight) / 2 + 22; // breathing room for labels
+const sharedColors = ['#0ea5e9', '#6366f1'];
 
-div_sizes = document.getElementById('SliderDivId1').getBoundingClientRect()
+function applySliderStyle(svg, title, colors) {
+    const gradientId = `slider-gradient-${title.replace(/\s+/g, '-').toLowerCase()}`;
+
+    const defs = svg.append('defs');
+    const shadow = defs.append('filter')
+        .attr('id', `${gradientId}-shadow`)
+        .attr('x', '-20%')
+        .attr('y', '-20%')
+        .attr('width', '140%')
+        .attr('height', '140%');
+    shadow.append('feDropShadow')
+        .attr('dx', 0)
+        .attr('dy', 2)
+        .attr('stdDeviation', 1.6)
+        .attr('flood-color', colors[1])
+        .attr('flood-opacity', 0.25);
+
+    const gradient = defs.append('linearGradient')
+        .attr('id', gradientId)
+        .attr('x1', '0%')
+        .attr('x2', '0%')
+        .attr('y1', '0%')
+        .attr('y2', '100%');
+    gradient.append('stop').attr('offset', '0%').attr('stop-color', colors[0]);
+    gradient.append('stop').attr('offset', '100%').attr('stop-color', colors[1]);
+
+    svg.classed('refined-slider', true);
+    svg.selectAll('.track')
+        .attr('stroke', `url(#${gradientId})`)
+        .attr('stroke-width', 9)
+        .attr('stroke-linecap', 'round')
+        .attr('opacity', 1);
+    svg.selectAll('.track-inset')
+        .attr('stroke', '#e5e7eb')
+        .attr('stroke-width', 7)
+        .attr('stroke-linecap', 'round')
+        .attr('opacity', 1);
+    svg.selectAll('.track-overlay')
+        .attr('stroke', 'transparent')
+        .attr('stroke-width', 24);
+
+    svg.selectAll('.handle')
+        .attr('r', 9)
+        .attr('fill', '#ffffff')
+        .attr('stroke', colors[1])
+        .attr('stroke-width', 2.2)
+        .attr('filter', `url(#${gradientId}-shadow)`);
+
+    svg.selectAll('.tick text')
+        .attr('fill', '#4a5568')
+        .attr('font-size', '10px')
+        .attr('font-weight', '600')
+        .attr('opacity', 0); // hide default tick labels; custom labels added below
+
+    svg.selectAll('.tick line')
+        .attr('stroke', '#cbd5e0')
+        .attr('stroke-width', 1);
+
+    svg.append('text')
+        .attr('x', div_sizes.width / 2)
+        .attr('y', sliderYOffset - 32)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#1f2937')
+        .attr('font-size', '12px')
+        .attr('font-weight', '700')
+        .text(title);
+
+    // static top/bottom labels
+    svg.append('text')
+        .attr('x', div_sizes.width / 2)
+        .attr('y', sliderYOffset - 14)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#4b5563')
+        .attr('font-size', '11px')
+        .attr('font-weight', '600')
+        .text('100%');
+    svg.append('text')
+        .attr('x', div_sizes.width / 2)
+        .attr('y', sliderYOffset + sliderHeight + 28)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#4b5563')
+        .attr('font-size', '11px')
+        .attr('font-weight', '600')
+        .text('0%');
+}
 
 var pathSlider = d3
     .sliderVertical()
@@ -10,12 +97,12 @@ var pathSlider = d3
     .max(1)
     .step(0.01)
     .width(div_sizes.width)
-    .height(div_sizes.height - position.padding_big * 3.5)
+    .height(sliderHeight)
     .tickFormat(d3.format('.0%'))
-    .ticks(2)
+    .ticks(0)
     .tickPadding(0)
     .default(1)
-    .displayValue(true)
+    .displayValue(false)
     .on('onchange', (valPath) => {
         // do somethng with the value 
         updatePathAndActivitySliders(
@@ -34,11 +121,11 @@ var activitySlider = d3
     .max(1)
     .step(0.01)
     .width(div_sizes.width)
-    .height(div_sizes.height - position.padding_big * 3.5)
+    .height(sliderHeight)
     .ticks(2)
     .tickPadding(0)
     .tickFormat(d3.format('.0%'))
-    .displayValue(true)
+    .displayValue(false)
     .on('onchange', (valActivity) => {
         // do something with the value 
         
@@ -50,22 +137,15 @@ var activitySlider = d3
     });
 
 console.log('------------->')
-console.log(document.getElementById('SliderDivId1').getBoundingClientRect())
-
-
-
 let pathSliderSvg = d3.select('#SliderId1')
     // .append('svg')
     .attr('width', div_sizes.width)
     .attr('height', div_sizes.height)
     pathSliderSvg
     .append('g')
-    .attr('transform', 'translate(' + div_sizes.width /2  +',' + (position.padding_big * 2.5).toString() + ')')
+    .attr('transform', 'translate(' + div_sizes.width /2  +',' + sliderYOffset.toString() + ')')
     .call(pathSlider);
-console.log("position.padding")
-console.log(position.padding)
-
-pathSliderSvg.append('g').attr('transform', 'translate('  + div_sizes.width /2 +  ',' +  position.padding_big.toString() + ')').append('text').text('Path slider').style("text-anchor", "middle")
+applySliderStyle(pathSliderSvg, 'Paths', sharedColors);
 
 
 let activitySliderSvg = d3.select('#SliderId2')
@@ -74,6 +154,6 @@ let activitySliderSvg = d3.select('#SliderId2')
     .attr('height', div_sizes.height)
     activitySliderSvg
     .append('g')
-    .attr('transform', 'translate(' + div_sizes.width /2  +',' + (position.padding_big * 2.5).toString() + ')')
+    .attr('transform', 'translate(' + div_sizes.width /2  +',' + sliderYOffset.toString() + ')')
     .call(activitySlider);    
-activitySliderSvg.append('g').attr('transform', 'translate(' + div_sizes.width /2 + ',' +  position.padding_big.toString() + ')').append('text').text('Activities slider').style("text-anchor", "middle")
+applySliderStyle(activitySliderSvg, 'Activities', sharedColors);

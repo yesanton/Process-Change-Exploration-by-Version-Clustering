@@ -34,10 +34,18 @@ function configDFG(data){
     config.node_end_start_color_scale = d3.scaleLinear().domain([d3.min(temp_activity_count),d3.max(temp_activity_count)])
                                               .range(["white", "orange"])
 
-    let t = data.dfrs.map(i => i.series_sum_each_arc)
-    // console.log("t!________________________")
-    // console.log(t)
-    config.edge_size_scale = d3.scaleLinear().domain([d3.min(t),d3.max(t)])
+    let t = data.dfrs.map(i => i.series_sum_each_arc || 0)
+    const edgeMinRaw = d3.min(t);
+    const edgeMaxRaw = d3.max(t);
+    const edgeMin = (edgeMinRaw === undefined || !isFinite(edgeMinRaw)) ? 0 : edgeMinRaw;
+    const edgeMax = (edgeMaxRaw === undefined || !isFinite(edgeMaxRaw)) ? 1 : edgeMaxRaw;
+    // thresholds now drop only zero-weight edges; retain the full model otherwise
+    config.threshold_arc_min = 1e-6;
+    config.threshold_arc_diff_min = 1e-6;
+
+    const edgeScaleDomain = (edgeMin === edgeMax) ? [0, edgeMax || 1] : [edgeMin, edgeMax];
+
+    config.edge_size_scale = d3.scaleLinear().domain(edgeScaleDomain)
                             .range([1, 4])
 
     return config;
@@ -74,7 +82,16 @@ function drawDFG(data){
         if (temp_sum > config_dfg.threshold_arc_min){
             // // Set up the edges
                 // the difference between the two datasets is larger than some value:
-            setEdgeWithParams(config_dfg, data.dfrs[j].act1, data.dfrs[j].act2,temp_sum, temp_sum_next, temp_sum_prev, scaleC)   
+            setEdgeWithParams(
+                config_dfg,
+                data.dfrs[j].act1,
+                data.dfrs[j].act2,
+                temp_sum,
+                temp_sum_next,
+                temp_sum_prev,
+                scaleC,
+                data.dfrs[j].series_sum_each_arc_diff
+            )   
         }
     }
     
@@ -190,25 +207,26 @@ function drawDFG(data){
     let height_dfg_svg_box = document.getElementById('DFGChart').getBoundingClientRect().height;
     // this is the size of the graph inside of svg
     let height_dfg_actual = config_dfg.g.graph().height;
-    // we scale the atual svg to the box that we have on the screen
-    // we also calcualte here that the dfg will always be in the middle if it is smaller than the whole screen
-    let initialScaleCalculated = (height_dfg_svg_box - position.padding_big) / height_dfg_actual;
-    let initialScale = initialScaleCalculated < 0.9? initialScaleCalculated : 0.9
+    let width_dfg_actual = config_dfg.g.graph().width;
+    // scale to fit both width and height
+    const scaleHeight = (height_dfg_svg_box - position.padding_big) / height_dfg_actual;
+    const scaleWidth = (width_dfg - position.padding_big) / width_dfg_actual;
+    let initialScaleCalculated = Math.min(scaleHeight, scaleWidth);
+    let initialScale = Math.min(initialScaleCalculated, 0.9);
 
     // console.log(initialScale)
     let padding_top = 0
-    if (initialScale >= 0.9){
-        padding_top = (height_dfg_svg_box - (height_dfg_actual * initialScale)) / 2
-    } else {
-        padding_top = position.padding
-    }
+    const scaledHeight = height_dfg_actual * initialScale;
+    const scaledWidth = width_dfg_actual * initialScale;
+    padding_top = Math.max(position.padding, (height_dfg_svg_box - scaledHeight) / 2);
+    const padding_left = Math.max(position.padding, (width_dfg - scaledWidth) / 2);
 
     // console.log(height_dfg_svg_box)
     // console.log(height_dfg_actual)
     // console.log('making adjustments of the dfg positioning')
     // console.log(padding_top)
 
-    svg.call(zoom.transform, d3.zoomIdentity.translate((width_dfg - config_dfg.g.graph().width * initialScale) / 2, padding_top).scale(initialScale));
+    svg.call(zoom.transform, d3.zoomIdentity.translate(padding_left, padding_top).scale(initialScale));
     // console.log("!!!!!!!!!!!!!@@@@@@@@@@@  " )
     // height_dfg_svg_box = document.getElementById('DFGChart').getBoundingClientRect().height;
     // height_dfg_actual = config_dfg.g.graph().height;
@@ -221,7 +239,11 @@ function drawDFG(data){
 
 
 function round_and_to_string(number){
-    return Math.round(number).toString()
+    if (!isFinite(number) || number <= 0) {
+        return "";
+    }
+    const rounded = Math.round(number);
+    return rounded < 1 ? "1" : rounded.toString();
 }
 
 // this code sets the style for the arcs
@@ -270,7 +292,10 @@ function determineMaxMinSeriesSum(data) {
     console.log('here -<<')
     console.log(data)
     for (let i = 0; i < data.dfrs.length ; i += 1){
-        let t = data.dfrs[i].series_sum_each_arc_next - data.dfrs[i].series_sum_each_arc_prev;
+        let t = data.dfrs[i].series_sum_each_arc_diff;
+        if (!isFinite(t)) {
+            continue;
+        }
         if (mi > t) {
             mi = t;
         } 
@@ -279,46 +304,50 @@ function determineMaxMinSeriesSum(data) {
         }
     }
     console.log('here ->>')
+    if (mi === Infinity || ma === -Infinity || (!isFinite(mi) && !isFinite(ma))) {
+        return [-1, 0, 1];
+    }
     return [mi, 0, ma]
 }
 
 
 
-function setEdgeWithParams(config, act1, act2, sum, sum_next, sum_prev = undefined, scaleC = undefined){
+function formatChangeLabel(changePercent) {
+    if (!isFinite(changePercent)) {
+        return changePercent > 0 ? "↑∞%" : "0%";
+    }
+    const direction = changePercent > 0 ? "↑" : changePercent < 0 ? "↓" : "";
+    return direction + Math.abs(changePercent).toFixed(0) + "%";
+}
+
+
+function setEdgeWithParams(config, act1, act2, sum, sum_next, sum_prev = undefined, scaleC = undefined, diffPercent = undefined){
     // we are dealing with two brushed regions
-    if (sum_prev) {
-        let temp_diff = sum_next - sum_prev;
+    if (sum_prev !== undefined) {
+        let temp_diff = (diffPercent !== undefined) ? diffPercent : (sum_next - sum_prev);
         if (config.coloring === "threecolors") {
-            let color = "edge_neutral"
-            if (temp_diff > 0) {
-                color = "edge_future"
-            } else if (temp_diff < 0) {
-                color = "edge_past"
-            }
+            let color = temp_diff > 0 ? "edge_future" : temp_diff < 0 ? "edge_past" : "edge_neutral";
             config.g.setEdge(act1, act2, 
                 {
                     curve: d3.curveBasis, // cuvre the edges
-                    labelStyle: 'stroke: ' + colors[color] + "; " + config.font_size,
-                    // label: round_and_to_string(temp_sum) + ' ↑' + round_and_to_string(temp_sum_diff),
-                    label: round_and_to_string(sum_prev)  
-                                                + '→' 
-                                                + round_and_to_string(sum_next),
+                    labelStyle: 'fill: ' + colors[color] + "; " + config.font_size,
+                    label: formatChangeLabel(temp_diff),
                     // additional options possible
                     // style: edge_style(data.dfrs[j].act1, data.dfrs[j].act2, temp_sum, "edge_future"),
                     style: edge_style(act1, act2, sum, color),
                     arrowheadStyle: arrow_style(act1, act2, color)
                 })
         } else if (config.coloring === "levelthreecolors") {
-            // console.log(d3.color(scaleC(temp_diff)).formatHex()) // this is formatting from RGB to HEX
+            const domain = scaleC.domain();
+            const clampedDiff = Math.max(domain[0], Math.min(domain[domain.length - 1], isFinite(temp_diff) ? temp_diff : (temp_diff > 0 ? domain[domain.length - 1] : domain[0])));
+            const colorForEdge = d3.color(scaleC(clampedDiff)).formatHex();
             config.g.setEdge(act1, act2, 
                 {
                     curve: d3.curveBasis, // cuvre the edges
-                    labelStyle: 'fill: ' + d3.color(scaleC(temp_diff)).formatHex() + "; " + config.font_size,
-                    label: round_and_to_string(sum_prev)  
-                                                + '→' 
-                                                + round_and_to_string(sum_next),
-                    style: edge_style_colorlevels(act1, act2, sum, d3.color(scaleC(temp_diff)).formatHex()),
-                    arrowheadStyle: "fill: " +  d3.color(scaleC(temp_diff)).formatHex()
+                    labelStyle: 'fill: ' + colorForEdge + "; " + config.font_size,
+                    label: formatChangeLabel(temp_diff),
+                    style: edge_style_colorlevels(act1, act2, sum, colorForEdge),
+                    arrowheadStyle: "fill: " +  colorForEdge
                 })
         }
         

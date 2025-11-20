@@ -25,7 +25,7 @@ let colors_start_end = {
 // let count = 50
 // let count_actual = 25
 var data = {}
-// data.count  - these are the count of each time series
+// data.count  - these are the count of each time series(number of windows)
 // data.count_actual  - the actual derived from the data, count_actual - count is the predicted then.
 // data.series_sum// this is for the sum of the time series to build the graph
 
@@ -54,102 +54,135 @@ let filteredDataPASlider = {};
 // store value of the activity and path sliders here sliders.activity, sliders.path
 let sliders = {path: 1, activity: 1}
 
-// d3.csv("data/new_sepsis-no_int-50-aggregation-equisize.csv",
-// d3.csv("data/new_rtfmp-no_int-70-aggregation-equisize.csv",
-d3.csv("data/new_rtfmp-no_int-75-aggregation-equisize_forecast.csv",
-// d3.csv("data/new_rtfmp-no_int-75-aggregation-equisize_actual.csv",
 
-// d3.csv("data/new_rtfmp-no_int-70-aggregation-equisize_actual.csv",
-// d3.csv("data/sepsis.csv",
 
-  // When reading the csv, I must format variables:
-    function(d,i){        
-        if (i == 0) {
-            data.count = parseInt(d['count'])
-            data.count_actual = parseInt(d['technique'])
-            // console.log(d)
-            // console.log(data.count)
-            // console.log(data.count_actual)
+// this to populate the following
+// data.timestamps
+// data.count
+// data.versions
+// data.drifts
+data.count = 0
+data.timestamps = []
+data.versions = []
+data.drifts = []
 
-            //initializing variable that depends on the count
-            data.series_sum = new Array(data.count).fill(0)
+const parseTimestampPrimary = d3.timeParse("%Y-%m-%d %H:%M:%S.%f%Z");
+const parseTimestampFallback = d3.timeParse("%Y-%m-%d %H:%M:%S");
 
-            // let d_new = d.slice(4,5);
-            let timestamps = []
-            for (let j = 0 ; j < data.count ; j+=1){
-                // https://github.com/d3/d3-time-format
-                let temp_date = d3.timeParse("%Y-%m-%d %H:%M:%S.%f%Z")(d[j])
-                timestamps.push(temp_date) 
+function parseTimestamp(value) {
+    return parseTimestampPrimary(value) || parseTimestampFallback(value);
+}
 
-                console.log(temp_date)
-                console.log(d[j])
+Promise.all([
+    // d3.csv("data/bose_log_metadata.csv"),
+    // d3.csv("data/bose_log_relations_matrix.csv")
+        d3.csv("data/Road_Traffic_Fine_Management_Process_metadata.csv"),
+        d3.csv("data/Road_Traffic_Fine_Management_Process_df_relations_matrix.csv")
+]).then(([windowMetadata, relationsMatrix]) => {
+    // populate timeline related arrays from the metadata file
+    data.count = windowMetadata.length;
+    data.count_actual = data.count; // until forecasts are added, everything is treated as actual
+    data.timestamps = windowMetadata.map(row => parseTimestamp(row.timestamp));
+    data.versions = windowMetadata.map(row => +row.version);
+    data.drifts = windowMetadata.map(row => +row.drift);
+    data.series_sum = new Array(data.count).fill(0);
 
+    const seriesColumns = Object.keys(relationsMatrix[0])
+        .filter(key => key !== 'idx' && key !== 'act1' && key !== 'act2');
+
+    relationsMatrix.forEach(row => {
+        const temp = {};
+        temp.series = seriesColumns.map(key => {
+            const value = +row[key];
+            const idx = parseInt(key, 10);
+            if (!Number.isNaN(idx)) {
+                data.series_sum[idx] += value;
             }
-            // should we add here also unnecessary columns?
-            data.timestamps = timestamps;
-            // return timestamps
-        }
-        else {
-            temp = []
-            temp.series = []
-            for (let j = 0 ; j < data.count ; j+=1){
-                let temp_v = +d[j]
-                temp.series.push(temp_v)
-                // calculate additional timeseries for line chart
-                data.series_sum[j] += temp_v
-            }
-            temp.act1 = d.act1
-            temp.act2 = d.act2
-     
-            temp.technique = d.technique
-            // add comdined info about the arcs
-            temp.series_sum_each_arc = d3.sum(temp.series)
-            data.dfrs.push(temp)
-            // return dfrs;
-        }
-    })
-    .then( (d,i) => {
-        console.log("---------dfg")
-        console.log(data)
+            return value;
+        });
 
-        data.activity_count = calculateActivitiesImportance(data)
-        
-        drawDFG(data)
-        drawLineplot(data, data.count_actual / data.count)
+        temp.act1 = row.act1;
+        temp.act2 = row.act2;
+        temp.technique = row.technique || 'matrix';
+        temp.series_sum_each_arc = d3.sum(temp.series);
+        temp.series_sum_each_arc_raw = temp.series_sum_each_arc;
+        data.dfrs.push(temp);
+    });
 
-})
-.catch(function(error){
-  console.log('cannot import file')
-})
+    console.log("---------dfg");
+    console.log(data);
+
+    normalizeEdgeSums(data);
+    data.activity_count = calculateActivitiesImportance(data);
+
+    drawDFG(data);
+    drawLineplot(data, data.count_actual / data.count);
+}).catch(function(error){
+    console.log('cannot import file', error);
+});
 
 // this function receives the selections of the 1-2 brushes of the linechart
 // it then updates the dfg 
 function updateSelection(selections_dates){
     console.log(selections_dates)
-    // filter data    
-    // for the case of one brush only
-    if (selections_dates.length === 1){
-        filteredData = filterDataByDate(selections_dates[0]);
-        // draw new plot
-        // drawDFG(filteredData);
+    const normalizedSelections = selections_dates.map(sel => {
+        if (Array.isArray(sel)) {
+            return { startDate: sel[0], endDate: sel[1] };
+        }
+        return sel;
+    }).filter(Boolean);
 
+    const getStartDate = (sel) => {
+        if (sel.startDate) { return sel.startDate; }
+        if (sel.indices && sel.indices.length > 0) {
+            return data.timestamps[Math.min(...sel.indices)];
+        }
+        return data.timestamps[0];
+    };
+
+    normalizedSelections.sort((a, b) => getStartDate(a) - getStartDate(b));
+
+    if (normalizedSelections.length === 0) {
+        filteredData = undefined;
+        updatePathAndActivitySlidersD(data);
+        return;
+    }
+
+    function getFilteredDataForSelection(selection) {
+        if (!selection) return undefined;
+        if (selection.indices && selection.indices.length > 0) {
+            return filterDataByIndices(selection.indices);
+        }
+        if (selection.version !== undefined) {
+            const indices = [];
+            for (let i = 0; i < data.versions.length; i += 1) {
+                if (data.versions[i] === selection.version) {
+                    indices.push(i);
+                }
+            }
+            return filterDataByIndices(indices);
+        }
+        if (selection.startDate && selection.endDate) {
+            return filterDataByDate([selection.startDate, selection.endDate]);
+        }
+        return undefined;
+    }
+
+    // for the case of one brush only
+    if (normalizedSelections.length === 1){
+        filteredData = getFilteredDataForSelection(normalizedSelections[0]);
+        if (!filteredData) { return; }
         updatePathAndActivitySlidersD(filteredData);
     }
     else { // here is when two regions are brushed
-        let filteredData1 = filterDataByDate(selections_dates[0]);
-        let filteredData2 = filterDataByDate(selections_dates[1]);
-        // now calculate the difference between two datasets to be representeed in dfg
-        // diff!
-
-
-        if (filteredData1.timestamps[0] < filteredData2.timestamps[0]){
-            console.log(filteredData1.timestamps[0])
-            console.log(filteredData2.timestamps[0])
-            console.log('======================================')
-            filteredData = differenceData(filteredData1, filteredData2);
-        } else {
-            filteredData = differenceData(filteredData2, filteredData1);
+        let filteredData1 = getFilteredDataForSelection(normalizedSelections[0]);
+        let filteredData2 = getFilteredDataForSelection(normalizedSelections[1]);
+        if (!filteredData1 || !filteredData2) { return; }
+        // ensure first is earlier for diff computation
+        if (filteredData1.timestamps[0] > filteredData2.timestamps[0]) {
+            [filteredData1, filteredData2] = [filteredData2, filteredData1];
         }
+        filteredData = differenceData(filteredData1, filteredData2);
         console.log('difference between calculated');
         // in case the path and activity sliders are also not in their default 
         // perform those filters and :
@@ -228,6 +261,8 @@ function filterDataByDate(dates){
     temp_data.timestamps = data.timestamps.filter(function (t) {
         return t >= dates[0] && t <= dates[1]
     })
+    temp_data.count = temp_data.timestamps.length;
+    temp_data.count_actual = temp_data.timestamps.length;
 
     // console.log(temp_data.timestamps)
 
@@ -250,6 +285,7 @@ function filterDataByDate(dates){
         temp.act2 = elem.act2
         temp.technique = elem.technique     
         temp.series_sum_each_arc = d3.sum(temp.series)
+        temp.series_sum_each_arc_raw = temp.series_sum_each_arc
         temp_data.dfrs.push(temp) 
         
 
@@ -260,22 +296,77 @@ function filterDataByDate(dates){
     temp_data.activity_count = calculateActivitiesImportance(temp_data)
 
     console.log(temp_data)
+    normalizeEdgeSums(temp_data)
     return temp_data;
+}
+
+function filterDataByIndices(indices){
+    let temp_data = {}
+    temp_data.dfrs = []
+    const sortedIndices = indices.slice().sort((a, b) => a - b);
+
+    temp_data.timestamps = sortedIndices.map(i => data.timestamps[i]);
+    temp_data.versions = sortedIndices.map(i => data.versions[i]);
+    temp_data.drifts = sortedIndices.map(i => data.drifts[i]);
+    temp_data.count = sortedIndices.length;
+    temp_data.count_actual = sortedIndices.length;
+
+    for (let elem of data.dfrs){
+        let temp = {};
+        temp.series = [];
+        for (let idx of sortedIndices){
+            temp.series.push(elem.series[idx]);
+        }
+        temp.act1 = elem.act1;
+        temp.act2 = elem.act2;
+        temp.technique = elem.technique;
+        temp.series_sum_each_arc = d3.sum(temp.series);
+        temp.series_sum_each_arc_raw = temp.series_sum_each_arc;
+        temp_data.dfrs.push(temp);
+    }
+
+    temp_data.activity_count = {}
+    temp_data.activity_count = calculateActivitiesImportance(temp_data)
+    normalizeEdgeSums(temp_data)
+    return temp_data;
+}
+
+function normalizeEdgeSums(dataset) {
+    const count = Math.max(1, dataset.count_actual || dataset.count || 1);
+    dataset.dfrs.forEach(edge => {
+        if (edge.series_sum_each_arc_raw === undefined) {
+            edge.series_sum_each_arc_raw = edge.series_sum_each_arc || 0;
+        }
+        const raw = edge.series_sum_each_arc_raw || 0;
+        const normalized = raw / count;
+        edge.series_sum_each_arc_normalized = normalized;
+        // keep series_sum_each_arc as the raw count for visualization in single-model mode
+        edge.series_sum_each_arc = edge.series_sum_each_arc_raw;
+    });
 }
 
 
 function differenceData(new_data_1, new_data_2){
-    // taking into account that we always compare the first in time with second dataset
+    const countPrev = Math.max(1, new_data_1.count_actual || new_data_1.count || 1);
+    const countNext = Math.max(1, new_data_2.count_actual || new_data_2.count || 1);
     for (let i = 0 ; i < new_data_1.dfrs.length ; i += 1){
-        new_data_2.dfrs[i].series_sum_each_arc_diff = new_data_2.dfrs[i].series_sum_each_arc - new_data_1.dfrs[i].series_sum_each_arc;
-        new_data_2.dfrs[i].series_sum_each_arc_prev = new_data_1.dfrs[i].series_sum_each_arc
-        new_data_2.dfrs[i].series_sum_each_arc_next = new_data_2.dfrs[i].series_sum_each_arc
-        new_data_2.dfrs[i].series_sum_each_arc += new_data_1.dfrs[i].series_sum_each_arc
-        // now we only use the data from the other section
-        new_data_2.dfrs[i].series_sum_each_arc_diff = new_data_1.dfrs[i].series_sum_each_arc;
-        
-        new_data_2.activity_count_prev = new_data_1.activity_count;
+        const prevRaw = new_data_1.dfrs[i].series_sum_each_arc_raw || new_data_1.dfrs[i].series_sum_each_arc || 0;
+        const nextRaw = new_data_2.dfrs[i].series_sum_each_arc_raw || new_data_2.dfrs[i].series_sum_each_arc || 0;
+        const prevNorm = prevRaw / countPrev;
+        const nextNorm = nextRaw / countNext;
+        const diffPercent = (prevNorm === 0)
+            ? (nextNorm > 0 ? Infinity : 0)
+            : ((nextNorm - prevNorm) / prevNorm) * 100;
+
+        new_data_2.dfrs[i].series_sum_each_arc_prev = prevNorm;
+        new_data_2.dfrs[i].series_sum_each_arc_next = nextNorm;
+        new_data_2.dfrs[i].series_sum_each_arc_diff = diffPercent;
+        // use max of the two normalized values for sizing in diff view
+        new_data_2.dfrs[i].series_sum_each_arc = Math.max(prevNorm, nextNorm);
+        new_data_2.dfrs[i].series_sum_each_arc_raw = Math.max(prevRaw, nextRaw);
     }
+
+    new_data_2.activity_count_prev = new_data_1.activity_count;
 
     console.log(new_data_2);
     return new_data_2;

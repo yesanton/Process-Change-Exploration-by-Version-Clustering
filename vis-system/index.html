@@ -1,64 +1,69 @@
 <html>
 <head>
     <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+
         body {
             font-family: Helvetica, Arial, sans-serif;
         }
 
-        h2 {
-            background-color: #38383a;
-            color: white;
-            padding: 5px;
-            text-align: center;
-            /* change the text to white and add a padding of 5px */
-        }
-        svg { /*Add code to show a black border of 1px around all SVGs elements in the page */ 
-          border: 5px solid black;
-        }
         .mainView {
-          display: flex; /* or inline-flex  https://css-tricks.com/snippets/css/a-guide-to-flexbox/ */
+          display: flex;
           flex-flow: column;
-          width: 98vw;
-          height: 100vh;
-          /* flex-wrap: wrap;   */
-        
+          width: 100vw;
+          height: calc(100vh - 48px);
+          max-height: calc(100vh - 48px);
+          box-sizing: border-box;
+          padding: 6px 10px 0;
         }
         .subView {
             display: flex;
             flex-flow: row;
-            width: 98vw;
-            height: 78vh;
+            width: 100%;
+            height: 82%;
+            box-sizing: border-box;
+            padding: 6px 6px 2px 6px;
+            gap: 0.4rem;
+            align-items: flex-start;
         }
-        /* - Use the "display flex" feature from to show the items from class `mainView` side by side  */
-
-        /* Use a collapsed column to break to a new column */
-        .break { /*just to make a line break */
-            flex-basis: 100%;
-            height: 0;
+        #DFGChartDivId {
+            flex: 1 1 auto;
+            height: 100%;
         }
-        /* #DFGChartDivId {
-            height: 84vh;
-        } */
         #DFGChart {
-            width: 82vw;
+            width: 100%;
             height: 100%;
         }
-        /* this will also be used for both of the sliders, so to calculate real width taken multiply by two */
-        #SliderId1 {
-            width: 8vw;
+        #SliderDivId1, #SliderDivId2 {
+            flex: 0 0 3vw;
+            min-width: 48px;
+            max-width: 60px;
             height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 4px 6px 8px;
         }
+        #SliderDivId1 { margin-left: auto; }
+        #SliderDivId2 { margin-left: 6px; }
         #LineChartDivId {
-            height: 15vh;
+            height: 13%;
+            min-height: 120px;
+            padding: 0;
+            box-sizing: border-box;
         }
         #LineChart {
             fill: white;
-            width: 98vw;
+            width: 100%;
             height: 100%;
         }
-       
-       
-
     </style>
 </head>
 
@@ -67,7 +72,6 @@
 <!-- next ones are for the dfg -->
 <link rel="stylesheet" href="dfg/demo.css">
 <link id="css" rel="stylesheet" href="dfg/main-dfg.css">
-<!-- <script src="https://d3js.org/d3.v5.min.js" charset="utf-8"></script> -->
 <script src="dagre-d3.js"></script>
 <link rel="stylesheet" href="dfg/tipsy.css">
 <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
@@ -77,17 +81,16 @@
 <script src="https://unpkg.com/d3-simple-slider"></script>
 
 <body>
-    <h2>Process Change Exploration</h2>
+    <header style="background: linear-gradient(90deg,#1f2937,#0b1324); color: #f3f4f6; padding: 12px 16px 10px; margin: 0 0 2px 0; text-align: center; font-size: 22px; letter-spacing: 0.6px; text-transform: uppercase; font-weight: 600;">
+        Process Change Exploration: by Version Clustering
+    </header>
     <div class="mainView">
         <div class='subView'>
             <div id='DFGChartDivId'> <svg id="DFGChart"></svg> </div>
             <div id='SliderDivId1'> <svg id="SliderId1"></svg> </div>
             <div id='SliderDivId2'> <svg id="SliderId2"></svg> </div>
         </div>
-        <!--break to a new row -->
-         <!-- <div class="break"></div>  -->
         <div id="LineChartDivId">
-            <!-- <h2>LineChart</h2> -->
             <svg id="LineChart"></svg>
         </div>
     </div>
