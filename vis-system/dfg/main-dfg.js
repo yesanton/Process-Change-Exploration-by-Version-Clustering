@@ -2,9 +2,10 @@
 function configDFG(data){
     // Create a new directed graph
     var g = new dagreD3.graphlib.Graph().setGraph({});
-    g.graph().rankSep = 10; 
-    g.graph().nodeSep = 10;
+    g.graph().rankSep = 28; 
+    g.graph().nodeSep = 24;
     g.graph().rankdir = "LR";
+    g.graph().ranker = "longest-path";
     g.graph().Schedule = true;
     g.graph().WBS = false;
     console.log(g)  
@@ -53,6 +54,37 @@ function configDFG(data){
 
 
 //function to draw dfg on 
+function computeNodeLayers(data) {
+    const nodes = new Set();
+    const edges = [];
+    data.dfrs.forEach(rel => {
+        nodes.add(rel.act1);
+        nodes.add(rel.act2);
+        edges.push([rel.act1, rel.act2]);
+    });
+    const inDeg = {};
+    nodes.forEach(n => { inDeg[n] = 0; });
+    edges.forEach(([s, t]) => { inDeg[t] = (inDeg[t] || 0) + 1; });
+    const layer = {};
+    const starts = [...nodes].filter(n => inDeg[n] === 0);
+    starts.forEach(n => { layer[n] = 0; });
+    [...nodes].forEach(n => { if (!(n in layer)) layer[n] = 0; });
+    // longest-path style relaxation (bounded iterations for cycles)
+    const iterations = nodes.size * 2;
+    for (let k = 0; k < iterations; k += 1) {
+        let updated = false;
+        edges.forEach(([s, t]) => {
+            const cand = (layer[s] || 0) + 1;
+            if (cand > (layer[t] || 0)) {
+                layer[t] = cand;
+                updated = true;
+            }
+        });
+        if (!updated) break;
+    }
+    return layer;
+}
+
 function drawDFG(data){     
     console.log(data)
     // initialize the dfg againt
@@ -67,6 +99,7 @@ function drawDFG(data){
     let scaleC = d3.scaleLinear().domain(minmax_series_sums).range(['red', 'black', 'green'])
     console.log(scaleC(0))
     
+    const nodeLayers = computeNodeLayers(data);
     let states = {}
     for (let j = 0 ; j < data.dfrs.length ; j+= 1){
         states[data.dfrs[j].act1] = {
@@ -112,6 +145,7 @@ function drawDFG(data){
         }
         value.rx = value.ry = 5;
         value.labelStyle = config.font_size;
+        value.rank = nodeLayers[state] || 0;
         
         if (state === 'end' || state === 'start') {
             // console.log(state)
@@ -161,12 +195,32 @@ function drawDFG(data){
     };
     
 
+    // compact node spacing dynamically for larger graphs
+    const nodeCount = config_dfg.g.nodes().length;
+    const densityScale = Math.max(0.55, Math.min(1, 40 / Math.max(nodeCount, 1)));
+    const adjustedRankSep = 26 * densityScale + 10;
+    const adjustedNodeSep = 22 * densityScale + 8;
+    config_dfg.g.graph().rankSep = adjustedRankSep;
+    config_dfg.g.graph().nodeSep = adjustedNodeSep;
+
     // Run the renderer. This is what draws the final graph.
     render(inner, config_dfg.g);
     
     inner.selectAll("config_lineplot.g.node")
         .attr("title", function(v) { return styleTooltip(v, config_dfg.g.node(v).description) })
         .each(function(v) { $(this).tipsy({ gravity: "w", opacity: 1, html: true}); });
+    
+    // subtle styling upgrades
+    inner.selectAll("g.node rect, g.node ellipse")
+        .attr("stroke", "#1f2937")
+        .attr("stroke-width", 0.7)
+        .attr("rx", 10)
+        .attr("ry", 10)
+        .style("filter", "drop-shadow(0px 2px 4px rgba(0,0,0,0.18))");
+    inner.selectAll("g.edgePath path")
+        .attr("stroke-linecap", "round")
+        .attr("stroke-linejoin", "round")
+        .attr("opacity", 0.9);
     
     // add tooltip
 

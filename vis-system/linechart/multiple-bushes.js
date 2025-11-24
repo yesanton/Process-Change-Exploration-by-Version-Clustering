@@ -106,6 +106,12 @@ function drawLineplot(data, skipStore = false) {
   const glyphData = [];
   const indexToGlyph = new Array(data.timestamps.length);
   const glyphsByVersion = new Map();
+  const versionKey = (v) => String(v);
+  const pushGlyphToVersionMap = (v, id) => {
+    const k = versionKey(v);
+    if (!glyphsByVersion.has(k)) glyphsByVersion.set(k, []);
+    glyphsByVersion.get(k).push(id);
+  };
   if (timelineDisplayMode === "timeversion") {
     let runStart = 0;
     for (let i = 1; i <= data.timestamps.length; i += 1) {
@@ -125,8 +131,7 @@ function drawLineplot(data, skipStore = false) {
       for (let j = runStart; j < i; j += 1) {
         indexToGlyph[j] = glyph.id;
       }
-      if (!glyphsByVersion.has(glyph.version)) glyphsByVersion.set(glyph.version, []);
-      glyphsByVersion.get(glyph.version).push(glyph.id);
+      pushGlyphToVersionMap(glyph.version, glyph.id);
       runStart = i;
     }
   } else { // timewindow
@@ -141,8 +146,7 @@ function drawLineplot(data, skipStore = false) {
       };
       glyphData.push(glyph);
       indexToGlyph[idx] = glyph.id;
-      if (!glyphsByVersion.has(glyph.version)) glyphsByVersion.set(glyph.version, []);
-      glyphsByVersion.get(glyph.version).push(glyph.id);
+      pushGlyphToVersionMap(glyph.version, glyph.id);
     });
   }
   glyphData.forEach((d) => {
@@ -239,7 +243,21 @@ function drawLineplot(data, skipStore = false) {
     selectionRects.enter()
       .append("rect")
       .attr("class", "timeline-selection")
-      .style("pointer-events", "none")
+      .on("click", (event, d) => {
+        const idx = activeSelections.findIndex(sel => sel.key === d.key);
+        if (idx >= 0) {
+          activeSelections.splice(idx, 1);
+          renderSelections();
+          updateSelection(activeSelections.map(sel => ({
+            startDate: sel.startDate,
+            endDate: sel.endDate,
+            version: sel.version,
+            indices: sel.indices
+          })));
+        }
+        event.stopPropagation();
+      })
+      .style("pointer-events", "auto")
       .merge(selectionRects)
       .attr("y", d => getSelectionBox(d.indices).y)
       .attr("height", d => getSelectionBox(d.indices).height)
@@ -255,11 +273,16 @@ function drawLineplot(data, skipStore = false) {
   }
 
   const brush = d3.brushX()
+    .filter(event => {
+      const onGlyph = event.target && event.target.closest && event.target.closest(".timeline-glyphs");
+      const allow = !event.ctrlKey && event.button === 0 && (!onGlyph || event.shiftKey);
+      return allow;
+    })
     .extent([[0, selectionOffsetY], [config.width, selectionOffsetY + selectionBandHeight]])
     .on("brush", brushMoved)
     .on("end", brushEnded);
 
-  config.svg.append("g")
+  const brushLayer = config.svg.append("g")
     .attr("class", "timeline-brush")
     .call(brush);
 
@@ -288,11 +311,55 @@ function drawLineplot(data, skipStore = false) {
     .attr("cursor", "pointer")
     .attr("filter", "url(#timeline-bar-shadow)")
     .on("mousedown", (event, d) => startDrag(event, d))
+    .on("click", (event, d) => { selectVersion(d); event.stopPropagation(); })
     .append("title")
     .text(d => "Version " + d.version + " • " + d3.timeFormat("%b %d, %Y")(d.startDate) + " → " + d3.timeFormat("%b %d, %Y")(d.endDate));
 
+  // keep brush layer atop for accessibility while allowing glyph clicks via custom handler
+  brushLayer.raise();
+  const overlay = brushLayer.selectAll(".overlay")
+    .attr("cursor", "crosshair");
+
+  let overlayDown = null;
+  overlay
+    .on("mousedown.overlay-select", (event) => {
+      overlayDown = d3.pointer(event, config.svg.node());
+    })
+    .on("mouseup.overlay-select", (event) => {
+      if (!overlayDown) return;
+      const up = d3.pointer(event, config.svg.node());
+      const dist = Math.hypot(up[0] - overlayDown[0], up[1] - overlayDown[1]);
+      overlayDown = null;
+      if (dist > 3) return; // treat as brush drag, not click
+      const g = glyphAtPosition(up[0], up[1]);
+      if (g) {
+        selectVersion(g);
+      }
+    });
+
+  // fallback direct click handler on the svg group to select version under pointer
+  config.svg.on("click.version-pick", (event) => {
+    const [px, py] = d3.pointer(event, config.svg.node());
+    const g = glyphAtPosition(px, py);
+    if (g) {
+      selectVersion(g);
+    }
+  });
+
+  // keep selections above brush overlay for reliable removal clicks
+  selectionLayer.raise();
+
   function selectVersion(datum) {
-    addSelectionByIndices([datum.id], true);
+    const version = datum.version !== undefined ? datum.version : (glyphData[datum.id] && glyphData[datum.id].version);
+    if (version === undefined) return;
+    const byVersion = glyphsByVersion.get(versionKey(version)) || [];
+    const fallback = glyphData
+      .map((g, idx) => ({ g, idx }))
+      .filter(({ g }) => g.version === version)
+      .map(({ idx }) => idx);
+    const indices = (byVersion.length ? byVersion : fallback).slice();
+    if (!indices.length) { return; }
+    addSelectionByIndices(indices, false);
   }
 
   // drag-to-select over same version
@@ -337,7 +404,7 @@ function drawLineplot(data, skipStore = false) {
     if (dragState.hasMoved && indices.length > 0) {
       addSelectionByIndices(indices);
     } else if (!dragState.hasMoved && dragState.version !== null) {
-      selectVersion({ id: dragState.anchorIndex });
+      selectVersion({ id: dragState.anchorIndex, version: dragState.version });
     }
     previewSelection.attr("visibility", "hidden");
     dragState.active = false;
@@ -382,6 +449,14 @@ function drawLineplot(data, skipStore = false) {
   function brushEnded(event) {
     if (!event.selection) {
       previewSelection.attr("visibility", "hidden");
+      const src = event.sourceEvent;
+      if (src) {
+        const [px, py] = d3.pointer(src, config.svg.node());
+        const g = glyphAtPosition(px, py);
+        if (g) {
+          selectVersion(g);
+        }
+      }
       return;
     }
     const [x0, x1] = event.selection;
@@ -405,14 +480,14 @@ function drawLineplot(data, skipStore = false) {
   function getVersionIndices(index) {
     if (indexToGlyph[index] !== undefined) { return [indexToGlyph[index]]; }
     const version = data.versions[index];
-    const mapped = glyphsByVersion.get(version);
+    const mapped = glyphsByVersion.get(versionKey(version));
     if (mapped && mapped.length) { return mapped.slice(); }
     return [];
   }
 
   function getVersionIndicesInRange(index, x0, x1) {
     const version = data.versions[index];
-    const all = glyphsByVersion.get(version) || [];
+    const all = glyphsByVersion.get(versionKey(version)) || [];
     const min = Math.min(x0, x1);
     const max = Math.max(x0, x1);
     const filtered = all.filter(i => {
@@ -466,12 +541,32 @@ function drawLineplot(data, skipStore = false) {
     };
   }
 
+  function glyphAtPosition(px, py) {
+    for (let i = 0; i < glyphData.length; i += 1) {
+      const g = glyphData[i];
+      const y0 = rowScale(g.version) + glyphYOffset;
+      const y1 = y0 + glyphHeight;
+      if (px >= g.x0 && px <= g.x1 && py >= y0 && py <= y1) {
+        return g;
+      }
+    }
+    return null;
+  }
+
   function addSelectionByIndices(indices, toggle = false) {
     if (!indices.length) return;
-    const version = glyphData[indices[0]].version;
+    const uniq = Array.from(new Set(indices)).sort((a, b) => a - b);
+    const version = glyphData[uniq[0]].version;
     const existingIndex = activeSelections.findIndex(sel =>
       sel.version === version
     );
+    if (existingIndex >= 0) {
+      const sameSpan = activeSelections[existingIndex].indices.length === uniq.length &&
+        activeSelections[existingIndex].indices.every((v, i) => v === uniq[i]);
+      if (sameSpan && !toggle) {
+        return; // identical selection already present
+      }
+    }
 
     if (toggle && existingIndex >= 0) {
       activeSelections.splice(existingIndex, 1);
@@ -482,10 +577,10 @@ function drawLineplot(data, skipStore = false) {
       }
       activeSelections.push({
         key: `${version}-${Date.now()}`,
-        indices: indices.slice(),
+        indices: uniq,
         version,
-        startDate: d3.min(indices, i => glyphData[i].startDate),
-        endDate: d3.max(indices, i => glyphData[i].endDate)
+        startDate: d3.min(uniq, i => glyphData[i].startDate),
+        endDate: d3.max(uniq, i => glyphData[i].endDate)
       });
     }
 
