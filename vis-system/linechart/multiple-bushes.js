@@ -1,3 +1,37 @@
+const timelineModeOptions = ["timewindow", "timeversion"];
+let timelineDisplayMode = "timewindow";
+let lastLineplotData = null;
+let currentLineplotData = null;
+
+function setTimelineDisplayMode(mode) {
+  if (!timelineModeOptions.includes(mode)) return;
+  timelineDisplayMode = mode;
+  updateTimelineModeMenuActive();
+  if (currentLineplotData) {
+    drawLineplot(currentLineplotData, true);
+  }
+}
+
+function updateTimelineModeMenuActive() {
+  const menu = document.getElementById("timeline-mode-menu");
+  if (!menu) return;
+  menu.querySelectorAll("button").forEach(btn => {
+    const isActive = btn.dataset.mode === timelineDisplayMode;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+function initTimelineModeMenu() {
+  const menu = document.getElementById("timeline-mode-menu");
+  if (!menu || menu.dataset.bound === "true") return;
+  menu.dataset.bound = "true";
+  menu.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => setTimelineDisplayMode(btn.dataset.mode));
+  });
+  updateTimelineModeMenuActive();
+}
+
 function configTimeline() {
   const margin = { top: 4, right: 20, bottom: 34, left: 20 };
   const divSizes = document.getElementById('LineChart').getBoundingClientRect();
@@ -22,17 +56,22 @@ function configTimeline() {
   return { svg, width, height, margin, container };
 }
 
-function drawLineplot(data) {
+function drawLineplot(data, skipStore = false) {
+  if (!skipStore) {
+    lastLineplotData = data;
+  }
+  currentLineplotData = data;
+  initTimelineModeMenu();
   d3.select("#LineChart").selectAll("*").remove();
   const config = configTimeline();
 
-  const glyphAreaPadding = 6;
-  const glyphAreaHeight = Math.max(16, config.height - glyphAreaPadding * 2);
-  const glyphWidth = Math.max(10, Math.min(20, config.width / (data.timestamps.length * 3)));
+  const glyphAreaPadding = 10;
+  const glyphAreaHeight = Math.max(22, config.height - glyphAreaPadding * 2);
+  const minGlyphWidth = Math.max(12, Math.min(26, config.width / (data.timestamps.length * 2.6)));
   const glyphAreaTop = glyphAreaPadding;
 
-  const selectionBandHeight = glyphAreaHeight + 10;
-  const selectionOffsetY = Math.max(0, glyphAreaTop - 5);
+  const selectionBandHeight = glyphAreaHeight + 16;
+  const selectionOffsetY = Math.max(0, glyphAreaTop - 6);
 
   const x = d3.scaleTime()
     .domain(d3.extent(data.timestamps))
@@ -57,36 +96,62 @@ function drawLineplot(data) {
     .style("font-size", "11px")
     .style("fill", "#4b5563");
 
-  const timestampTotals = {};
-  data.timestamps.forEach(ts => {
-    const key = ts.getTime();
-    timestampTotals[key] = (timestampTotals[key] || 0) + 1;
-  });
-  const timestampOffsets = {};
-  const glyphData = data.timestamps.map((date, index) => {
-    const key = date.getTime();
-    const total = timestampTotals[key];
-    timestampOffsets[key] = (timestampOffsets[key] || 0) + 1;
-    const order = timestampOffsets[key] - 1;
-    const spread = Math.min(glyphWidth + 6, 22);
-    const offset = (order - (total - 1) / 2) * spread;
-    const positionX = x(date) + offset;
-    return {
-      date,
-      version: data.versions[index],
-      drift: data.drifts[index],
-      index,
-      positionX
-    };
-  });
-  const versionIndexMap = new Map();
-  glyphData.forEach((d, idx) => {
-    if (!versionIndexMap.has(d.version)) {
-      versionIndexMap.set(d.version, []);
-    }
-    versionIndexMap.get(d.version).push(idx);
-  });
+  const gapDurations = [];
+  for (let i = 0; i < data.timestamps.length - 1; i += 1) {
+    gapDurations.push(data.timestamps[i + 1] - data.timestamps[i]);
+  }
+  const fallbackGap = gapDurations.length ? d3.median(gapDurations) : 1000 * 60 * 60 * 24 * 30;
+  const trailingDate = new Date(data.timestamps[data.timestamps.length - 1].getTime() + fallbackGap);
 
+  const glyphData = [];
+  const indexToGlyph = new Array(data.timestamps.length);
+  const glyphsByVersion = new Map();
+  if (timelineDisplayMode === "timeversion") {
+    let runStart = 0;
+    for (let i = 1; i <= data.timestamps.length; i += 1) {
+      const boundary = i === data.timestamps.length || data.versions[i] !== data.versions[runStart];
+      if (!boundary) { continue; }
+      const startDate = data.timestamps[runStart];
+      const endDate = i < data.timestamps.length ? data.timestamps[i] : trailingDate;
+      const drift = d3.max(data.drifts.slice(runStart, i));
+      const glyph = {
+        id: glyphData.length,
+        startDate,
+        endDate,
+        version: data.versions[runStart],
+        drift: drift
+      };
+      glyphData.push(glyph);
+      for (let j = runStart; j < i; j += 1) {
+        indexToGlyph[j] = glyph.id;
+      }
+      if (!glyphsByVersion.has(glyph.version)) glyphsByVersion.set(glyph.version, []);
+      glyphsByVersion.get(glyph.version).push(glyph.id);
+      runStart = i;
+    }
+  } else { // timewindow
+    data.timestamps.forEach((startDate, idx) => {
+      const endDate = idx < data.timestamps.length - 1 ? data.timestamps[idx + 1] : trailingDate;
+      const glyph = {
+        id: glyphData.length,
+        startDate,
+        endDate,
+        version: data.versions[idx],
+        drift: data.drifts[idx]
+      };
+      glyphData.push(glyph);
+      indexToGlyph[idx] = glyph.id;
+      if (!glyphsByVersion.has(glyph.version)) glyphsByVersion.set(glyph.version, []);
+      glyphsByVersion.get(glyph.version).push(glyph.id);
+    });
+  }
+  glyphData.forEach((d) => {
+    const start = x(d.startDate);
+    const end = x(d.endDate);
+    d.x0 = start;
+    d.x1 = Math.max(end, d.x0 + minGlyphWidth);
+    d.cx = (d.x0 + d.x1) / 2;
+  });
   const uniqueVersions = Array.from(new Set(data.versions));
   const orderedVersions = uniqueVersions.slice().sort((a, b) => {
     if (a === 0) return 1;
@@ -112,16 +177,34 @@ function drawLineplot(data) {
     .paddingInner(0.2)
     .paddingOuter(0.15);
 
-  const glyphRadius = Math.max(4, Math.min(10, Math.min(glyphWidth / 2, rowScale.bandwidth() / 2 - 2)));
+  const glyphHeight = Math.max(12, rowScale.bandwidth() * 0.55);
+  const glyphCorner = Math.min(10, glyphHeight / 2.4);
+  const glyphYOffset = (rowScale.bandwidth() - glyphHeight) / 2;
+
+  const defs = config.container.append("defs");
+  const shadow = defs.append("filter")
+    .attr("id", "timeline-bar-shadow")
+    .attr("x", "-20%")
+    .attr("y", "-20%")
+    .attr("width", "140%")
+    .attr("height", "140%");
+  shadow.append("feDropShadow")
+    .attr("dx", 0)
+    .attr("dy", 2)
+    .attr("stdDeviation", 2.5)
+    .attr("flood-color", "#000")
+    .attr("flood-opacity", 0.18);
 
   config.svg.append("g")
     .attr("class", "drift-lines")
     .selectAll("line")
-    .data(glyphData.filter(d => d.drift))
+    .data(data.timestamps
+      .map((t, idx) => ({ x: x(t), drift: data.drifts[idx] }))
+      .filter(d => d.drift))
     .enter()
     .append("line")
-    .attr("x1", d => d.positionX)
-    .attr("x2", d => d.positionX)
+    .attr("x1", d => d.x)
+    .attr("x2", d => d.x)
     .attr("y1", selectionOffsetY)
     .attr("y2", selectionOffsetY + selectionBandHeight)
     .attr("stroke", "#d62728")
@@ -188,24 +271,28 @@ function drawLineplot(data) {
   const glyphs = config.svg.append("g")
     .attr("class", "timeline-glyphs");
 
-  glyphs.selectAll("circle")
+  glyphs.selectAll("rect")
     .data(glyphData)
     .enter()
-    .append("circle")
-    .attr("cx", d => d.positionX)
-    .attr("cy", d => rowScale(d.version) + rowScale.bandwidth() / 2)
-    .attr("r", glyphRadius)
-    .attr("fill", d => versionColorScale(d.version))
-    .attr("stroke", "#2f2f2f")
-    .attr("stroke-width", 1)
+    .append("rect")
+    .attr("x", d => d.x0)
+    .attr("y", d => rowScale(d.version) + glyphYOffset)
+    .attr("width", d => d.x1 - d.x0)
+    .attr("height", glyphHeight)
+    .attr("rx", glyphCorner)
+    .attr("ry", glyphCorner)
+    .attr("fill", d => d3.color(versionColorScale(d.version)).brighter(0.25))
+    .attr("stroke", d => d3.color(versionColorScale(d.version)).darker(0.4))
+    .attr("stroke-width", 1.2)
+    .attr("opacity", 0.94)
     .attr("cursor", "pointer")
+    .attr("filter", "url(#timeline-bar-shadow)")
     .on("mousedown", (event, d) => startDrag(event, d))
     .append("title")
-    .text(d => "Version " + d.version + " • " + d3.timeFormat("%b %d, %Y")(d.date));
+    .text(d => "Version " + d.version + " • " + d3.timeFormat("%b %d, %Y")(d.startDate) + " → " + d3.timeFormat("%b %d, %Y")(d.endDate));
 
-  function selectVersion(version) {
-    const indices = versionIndexMap.get(version) || [];
-    addSelectionByIndices(indices, true);
+  function selectVersion(datum) {
+    addSelectionByIndices([datum.id], true);
   }
 
   // drag-to-select over same version
@@ -224,7 +311,7 @@ function drawLineplot(data) {
     dragState.version = datum.version;
     dragState.startX = xPos;
     dragState.currentX = xPos;
-    dragState.anchorIndex = datum.index;
+    dragState.anchorIndex = datum.id;
     dragState.hasMoved = false;
     event.stopPropagation();
   }
@@ -250,7 +337,7 @@ function drawLineplot(data) {
     if (dragState.hasMoved && indices.length > 0) {
       addSelectionByIndices(indices);
     } else if (!dragState.hasMoved && dragState.version !== null) {
-      selectVersion(dragState.version);
+      selectVersion({ id: dragState.anchorIndex });
     }
     previewSelection.attr("visibility", "hidden");
     dragState.active = false;
@@ -267,8 +354,8 @@ function drawLineplot(data) {
     const minX = Math.min(startX, currentX);
     const maxX = Math.max(startX, currentX);
     const filtered = all.filter(idx => {
-      const px = glyphData[idx].positionX;
-      return px >= minX && px <= maxX;
+      const g = glyphData[idx];
+      return g.x1 >= minX && g.x0 <= maxX;
     });
     if (anchorIndex !== null && !filtered.includes(anchorIndex)) {
       filtered.push(anchorIndex);
@@ -316,18 +403,21 @@ function drawLineplot(data) {
   }
 
   function getVersionIndices(index) {
+    if (indexToGlyph[index] !== undefined) { return [indexToGlyph[index]]; }
     const version = data.versions[index];
-    return versionIndexMap.get(version) || [index];
+    const mapped = glyphsByVersion.get(version);
+    if (mapped && mapped.length) { return mapped.slice(); }
+    return [];
   }
 
   function getVersionIndicesInRange(index, x0, x1) {
     const version = data.versions[index];
-    const all = versionIndexMap.get(version) || [index];
+    const all = glyphsByVersion.get(version) || [];
     const min = Math.min(x0, x1);
     const max = Math.max(x0, x1);
     const filtered = all.filter(i => {
-      const pos = glyphData[i].positionX;
-      return pos >= min && pos <= max;
+      const span = glyphData[i];
+      return span.x1 >= min && span.x0 <= max;
     });
     if (!filtered.length) {
       return getVersionIndices(index);
@@ -339,12 +429,12 @@ function drawLineplot(data) {
     let minX = Infinity;
     let maxX = -Infinity;
     indices.forEach(i => {
-      const pos = glyphData[i].positionX;
-      if (pos < minX) { minX = pos; }
-      if (pos > maxX) { maxX = pos; }
+      const g = glyphData[i];
+      if (g.x0 < minX) { minX = g.x0; }
+      if (g.x1 > maxX) { maxX = g.x1; }
     });
-    const paddingX = Math.max(6, glyphRadius * 0.6);
-    const span = Math.max((maxX - minX) + glyphWidth, glyphWidth);
+    const paddingX = Math.max(8, glyphHeight * 0.3);
+    const span = Math.max((maxX - minX), minGlyphWidth);
     const centerX = (minX + maxX) / 2;
     const width = span + paddingX * 2;
     return {
@@ -369,7 +459,7 @@ function drawLineplot(data) {
   function getSelectionBox(indices) {
     const version = glyphData[indices[0]].version;
     const rowCenter = rowScale(version) + rowScale.bandwidth() / 2;
-    const height = Math.max(rowScale.bandwidth(), glyphRadius * 2 + 6);
+    const height = Math.max(rowScale.bandwidth(), glyphHeight + 10);
     return {
       y: rowCenter - height / 2,
       height
@@ -394,8 +484,8 @@ function drawLineplot(data) {
         key: `${version}-${Date.now()}`,
         indices: indices.slice(),
         version,
-        startDate: d3.min(indices, i => data.timestamps[i]),
-        endDate: d3.max(indices, i => data.timestamps[i])
+        startDate: d3.min(indices, i => glyphData[i].startDate),
+        endDate: d3.max(indices, i => glyphData[i].endDate)
       });
     }
 
