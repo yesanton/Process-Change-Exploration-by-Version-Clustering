@@ -4,7 +4,7 @@ Interactive exploration tool for comparing process behavior across time windows 
 
 > This project extends the ideas in [Process-Change-Exploration-Visualizations](https://github.com/yesanton/Process-Change-Exploration-Visualizations) with richer comparison modes, better brushing, and clearer percent/absolute views.
 
-![Process Change Exploration by Version Clustering screenshot](docs/screenshot.png)
+![Process Change Exploration by Version Clustering screenshot](examples/pce-version-clustering.png)
 
 ## Features
 - Dual-mode brushing: select one region to focus, or two regions to see normalized percentage deltas on nodes and edges.
@@ -16,7 +16,7 @@ Interactive exploration tool for comparing process behavior across time windows 
 ## Getting Started
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/Process-Change-Exploration-by-Version-Clustering.git
+   git clone https://github.com/yesanton/Process-Change-Exploration-by-Version-Clustering.git
    cd Process-Change-Exploration-by-Version-Clustering/vis-system
    ```
 2. Start a simple local server (any static server works). For example with `serve`:
