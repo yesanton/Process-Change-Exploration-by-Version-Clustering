@@ -25,6 +25,8 @@ let colors_start_end = {
 // let count = 50
 // let count_actual = 25
 var data = {}
+let performanceMode = "percent"; // "percent" or "absolute"
+let selectionContext = "none";   // "none" | "single" | "double"
 // data.count  - these are the count of each time series(number of windows)
 // data.count_actual  - the actual derived from the data, count_actual - count is the predicted then.
 // data.series_sum// this is for the sum of the time series to build the graph
@@ -73,6 +75,45 @@ function parseTimestamp(value) {
     return parseTimestampPrimary(value) || parseTimestampFallback(value);
 }
 
+function getDFGOptions() {
+    return {
+        performanceMode,
+        selectionType: selectionContext,
+        baseData: data
+    };
+}
+
+function updatePerformanceMenuActive() {
+    const menu = document.getElementById("performance-mode-menu");
+    if (!menu) return;
+    menu.querySelectorAll("button").forEach(btn => {
+        const active = btn.dataset.mode === performanceMode;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+}
+
+function initPerformanceMenu() {
+    const menu = document.getElementById("performance-mode-menu");
+    if (!menu || menu.dataset.bound === "true") return;
+    menu.dataset.bound = "true";
+    menu.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const mode = btn.dataset.mode;
+            if (!mode) return;
+            performanceMode = mode;
+            updatePerformanceMenuActive();
+            // redraw with current data context
+            if (filteredData === undefined) {
+                updatePathAndActivitySlidersD(data);
+            } else {
+                updatePathAndActivitySlidersD(filteredData);
+            }
+        });
+    });
+    updatePerformanceMenuActive();
+}
+
 Promise.all([
     // d3.csv("data/bose_log_metadata.csv"),
     // d3.csv("data/bose_log_relations_matrix.csv")
@@ -115,7 +156,8 @@ Promise.all([
     normalizeEdgeSums(data);
     data.activity_count = calculateActivitiesImportance(data);
 
-    drawDFG(data);
+    initPerformanceMenu();
+    drawDFG(data, getDFGOptions());
     drawLineplot(data, data.count_actual / data.count);
 }).catch(function(error){
     console.log('cannot import file', error);
@@ -143,6 +185,7 @@ function updateSelection(selections_dates){
     normalizedSelections.sort((a, b) => getStartDate(a) - getStartDate(b));
 
     if (normalizedSelections.length === 0) {
+        selectionContext = "none";
         filteredData = undefined;
         updatePathAndActivitySlidersD(data);
         return;
@@ -170,11 +213,13 @@ function updateSelection(selections_dates){
 
     // for the case of one brush only
     if (normalizedSelections.length === 1){
+        selectionContext = "single";
         filteredData = getFilteredDataForSelection(normalizedSelections[0]);
         if (!filteredData) { return; }
         updatePathAndActivitySlidersD(filteredData);
     }
     else { // here is when two regions are brushed
+        selectionContext = "double";
         let filteredData1 = getFilteredDataForSelection(normalizedSelections[0]);
         let filteredData2 = getFilteredDataForSelection(normalizedSelections[1]);
         if (!filteredData1 || !filteredData2) { return; }
@@ -218,7 +263,7 @@ function updatePathAndActivitySlidersD(d) {
     if (Math.abs(sliders.activity - 1) < 0.01 && Math.abs(sliders.path - 1) < 0.01) {
         // if both are 1 then nothing to do here just show the original data
         console.log('drawing dfg right away, nothing to filter with sliders')
-        drawDFG(d);
+        drawDFG(d, getDFGOptions());
     } else {
         if (Math.abs(sliders.activity - 1) < 0.01 && sliders.path < 1) {
             // if path slider is less than 1 but the activity not we just filter for paths
@@ -243,7 +288,7 @@ function updatePathAndActivitySlidersD(d) {
         console.log('filteredDataPASlider')
         console.log(filteredDataPASlider)
 
-        drawDFG(filteredDataPASlider);
+        drawDFG(filteredDataPASlider, getDFGOptions());
         delete filteredDataPASlider; 
     }
 }
@@ -360,6 +405,8 @@ function differenceData(new_data_1, new_data_2){
 
         new_data_2.dfrs[i].series_sum_each_arc_prev = prevNorm;
         new_data_2.dfrs[i].series_sum_each_arc_next = nextNorm;
+        new_data_2.dfrs[i].series_sum_each_arc_prev_raw = prevRaw;
+        new_data_2.dfrs[i].series_sum_each_arc_next_raw = nextRaw;
         new_data_2.dfrs[i].series_sum_each_arc_diff = diffPercent;
         // use max of the two normalized values for sizing in diff view
         new_data_2.dfrs[i].series_sum_each_arc = Math.max(prevNorm, nextNorm);
@@ -367,6 +414,7 @@ function differenceData(new_data_1, new_data_2){
     }
 
     new_data_2.activity_count_prev = new_data_1.activity_count;
+    new_data_2.count_prev = countPrev;
 
     console.log(new_data_2);
     return new_data_2;
