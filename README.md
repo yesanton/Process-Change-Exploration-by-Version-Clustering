@@ -1,10 +1,10 @@
-# Process Version & Drift Visualization
+# Process Change Exploration by Version Clustering
 
 Interactive exploration tool for comparing process behavior across time windows or version clusters. It renders a directly-follows graph (DFG) and a timeline panel so you can brush one or two regions, normalize counts by window totals, and immediately see how paths and activities change.
 
 > This project extends the ideas in [Process-Change-Exploration-Visualizations](https://github.com/yesanton/Process-Change-Exploration-Visualizations) with richer comparison modes, better brushing, and clearer percent/absolute views.
 
-![Process Change Exploration screenshot](docs/screenshot.png)
+![Process Change Exploration by Version Clustering screenshot](docs/screenshot.png)
 
 ## Features
 - Dual-mode brushing: select one region to focus, or two regions to see normalized percentage deltas on nodes and edges.
@@ -16,14 +16,15 @@ Interactive exploration tool for comparing process behavior across time windows 
 ## Getting Started
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/Process-Version-And-Drift-Visualization.git
-   cd Process-Version-And-Drift-Visualization/vis-system
+   git clone https://github.com/your-username/Process-Change-Exploration-by-Version-Clustering.git
+   cd Process-Change-Exploration-by-Version-Clustering/vis-system
    ```
-2. Start a simple local server (any static server works):
+2. Start a simple local server (any static server works). For example with `serve`:
    ```bash
-   python3 -m http.server 8000
+   npx serve .
    ```
-3. Open http://localhost:8000/ in your browser. The demo uses the provided `data/Road_Traffic_Fine_Management_Process_*` CSVs.
+   This runs at http://localhost:3000 by default.
+3. Open http://localhost:3000/ in your browser. The demo uses the provided `data/Road_Traffic_Fine_Management_Process_*` CSVs.
 
 ## Usage Guide
 - **Brushing**: Drag over the bottom timeline to create a selection. Drag twice to compare two regions; selections auto-sort by time.
