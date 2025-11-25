@@ -133,13 +133,19 @@ function drawDFG(data, opts = {}){
         const nodeDiffs = Object.keys(data.activity_count || {}).map(k => {
             const curr = data.activity_count[k] || 0;
             const prev = (data.activity_count_prev || {})[k] || 0;
-            if (mode === "absolute") {
-                return curr - prev;
-            }
+            const prevAvg = (data.activity_count_prev_avg && Object.prototype.hasOwnProperty.call(data.activity_count_prev_avg, k))
+                ? data.activity_count_prev_avg[k]
+                : undefined;
+            const currAvg = (data.activity_count_avg && Object.prototype.hasOwnProperty.call(data.activity_count_avg, k))
+                ? data.activity_count_avg[k]
+                : undefined;
             const prevDen = Math.max(1, data.count_prev || config_dfg.baseCount || 1);
             const currDen = Math.max(1, data.count_actual || data.count || prevDen);
-            const prevNorm = prev / prevDen;
-            const currNorm = curr / currDen;
+            const prevNorm = (prevAvg !== undefined) ? prevAvg : prev / prevDen;
+            const currNorm = (currAvg !== undefined) ? currAvg : curr / currDen;
+            if (mode === "absolute") {
+                return currNorm - prevNorm;
+            }
             return (prevNorm === 0) ? (currNorm > 0 ? Infinity : 0) : ((currNorm - prevNorm) / prevNorm) * 100;
         });
         const maxNodeDiff = d3.max(nodeDiffs.map(v => Math.abs(isFinite(v) ? v : 0))) || 1;
@@ -199,21 +205,27 @@ function drawDFG(data, opts = {}){
         // console.log(data)
         const currentVal = data.activity_count[state] || 0;
         const prevVal = (data.activity_count_prev || {})[state] || 0;
+        const currentValAvg = (data.activity_count_avg && Object.prototype.hasOwnProperty.call(data.activity_count_avg, state))
+            ? data.activity_count_avg[state]
+            : undefined;
+        const prevValAvg = (data.activity_count_prev_avg && Object.prototype.hasOwnProperty.call(data.activity_count_prev_avg, state))
+            ? data.activity_count_prev_avg[state]
+            : undefined;
         const baseVal = (config_dfg.baseActivityCounts || {})[state] || 0;
         const countBase = Math.max(1, config_dfg.baseCount || 1);
+        const prevDen = Math.max(1, data.count_prev || countBase);
+        const currDen = Math.max(1, data.count_actual || data.count || countBase);
         const mode = config_dfg.performanceMode;
         const selType = config_dfg.selectionType;
         const fmt = (v) => Math.round(v);
         let nodeDiffVal = 0;
         if (selType === "double" && data.activity_count_prev !== undefined) {
+            const prevNorm = (prevValAvg !== undefined) ? prevValAvg : prevVal / prevDen;
+            const currNorm = (currentValAvg !== undefined) ? currentValAvg : currentVal / currDen;
             if (mode === "absolute") {
-                value.label = `${state} (${fmt(currentVal)} - ${fmt(prevVal)})`;
-                nodeDiffVal = currentVal - prevVal;
+                value.label = `${state} (${fmt(currNorm)} - ${fmt(prevNorm)})`;
+                nodeDiffVal = currNorm - prevNorm;
             } else {
-                const prevDen = Math.max(1, data.count_prev || countBase);
-                const currDen = Math.max(1, data.count_actual || data.count || countBase);
-                const prevNorm = prevVal / prevDen;
-                const currNorm = currentVal / currDen;
                 const diffPercent = (prevNorm === 0)
                     ? (currNorm > 0 ? Infinity : 0)
                     : ((currNorm - prevNorm) / prevNorm) * 100;

@@ -73,29 +73,6 @@ function drawLineplot(data, skipStore = false) {
   const selectionBandHeight = glyphAreaHeight + 16;
   const selectionOffsetY = Math.max(0, glyphAreaTop - 6);
 
-  const x = d3.scaleTime()
-    .domain(d3.extent(data.timestamps))
-    .range([0, config.width]);
-
-  const axis = d3.axisBottom(x)
-    .ticks(Math.min(14, data.timestamps.length))
-    .tickFormat((d, i, nodes) => {
-      const formatterFull = d3.timeFormat("%b %Y");
-      const formatterEdge = d3.timeFormat("%Y");
-      if (i === 0 || i === nodes.length - 1) {
-        return formatterEdge(d);
-      }
-      return formatterFull(d);
-    })
-    .tickPadding(6);
-
-  config.svg.append("g")
-    .attr("transform", "translate(0," + (config.height + 1) + ")")
-    .call(axis)
-    .selectAll("text")
-    .style("font-size", "11px")
-    .style("fill", "#4b5563");
-
   const gapDurations = [];
   for (let i = 0; i < data.timestamps.length - 1; i += 1) {
     gapDurations.push(data.timestamps[i + 1] - data.timestamps[i]);
@@ -149,13 +126,6 @@ function drawLineplot(data, skipStore = false) {
       pushGlyphToVersionMap(glyph.version, glyph.id);
     });
   }
-  glyphData.forEach((d) => {
-    const start = x(d.startDate);
-    const end = x(d.endDate);
-    d.x0 = start;
-    d.x1 = Math.max(end, d.x0 + minGlyphWidth);
-    d.cx = (d.x0 + d.x1) / 2;
-  });
   const uniqueVersions = Array.from(new Set(data.versions));
   const orderedVersions = uniqueVersions.slice().sort((a, b) => {
     if (a === 0) return 1;
@@ -184,6 +154,51 @@ function drawLineplot(data, skipStore = false) {
   const glyphHeight = Math.max(12, rowScale.bandwidth() * 0.55);
   const glyphCorner = Math.min(10, glyphHeight / 2.4);
   const glyphYOffset = (rowScale.bandwidth() - glyphHeight) / 2;
+  const brushPadding = Math.max(8, glyphHeight * 0.3);
+
+  const baseStart = data.timestamps[0];
+  const baseEnd = trailingDate;
+  const baseRangeMs = Math.max(1, baseEnd - baseStart);
+  const msPerPx = baseRangeMs / config.width;
+  const lastWindowDurationMs = Math.max(0, trailingDate - data.timestamps[data.timestamps.length - 1]);
+  const lastWindowDurationPx = lastWindowDurationMs / msPerPx;
+  const extraWidthNeededPx = Math.max(0, minGlyphWidth - lastWindowDurationPx);
+  const rightPadPx = brushPadding + extraWidthNeededPx;
+  const paddedDomain = [
+    new Date(baseStart.getTime() - brushPadding * msPerPx),
+    new Date(baseEnd.getTime() + rightPadPx * msPerPx)
+  ];
+
+  const x = d3.scaleTime()
+    .domain(paddedDomain)
+    .range([0, config.width]);
+
+  const axis = d3.axisBottom(x)
+    .ticks(Math.min(14, data.timestamps.length))
+    .tickFormat((d, i, nodes) => {
+      const formatterFull = d3.timeFormat("%b %Y");
+      const formatterEdge = d3.timeFormat("%Y");
+      if (i === 0 || i === nodes.length - 1) {
+        return formatterEdge(d);
+      }
+      return formatterFull(d);
+    })
+    .tickPadding(6);
+
+  config.svg.append("g")
+    .attr("transform", "translate(0," + (config.height + 1) + ")")
+    .call(axis)
+    .selectAll("text")
+    .style("font-size", "11px")
+    .style("fill", "#4b5563");
+
+  glyphData.forEach((d) => {
+    const start = x(d.startDate);
+    const end = x(d.endDate);
+    d.x0 = start;
+    d.x1 = Math.max(end, d.x0 + minGlyphWidth);
+    d.cx = (d.x0 + d.x1) / 2;
+  });
 
   const defs = config.container.append("defs");
   const shadow = defs.append("filter")

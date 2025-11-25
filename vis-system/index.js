@@ -390,10 +390,21 @@ function normalizeEdgeSums(dataset) {
     });
 }
 
+function normalizeActivityCountsMap(activityCounts, count) {
+    const denom = Math.max(1, count || 1);
+    const normalized = {};
+    Object.keys(activityCounts || {}).forEach(key => {
+        normalized[key] = (activityCounts[key] || 0) / denom;
+    });
+    return normalized;
+}
+
 
 function differenceData(new_data_1, new_data_2){
     const countPrev = Math.max(1, new_data_1.count_actual || new_data_1.count || 1);
     const countNext = Math.max(1, new_data_2.count_actual || new_data_2.count || 1);
+    const prevActivityAvg = normalizeActivityCountsMap(new_data_1.activity_count || {}, countPrev);
+    const nextActivityAvg = normalizeActivityCountsMap(new_data_2.activity_count || {}, countNext);
     for (let i = 0 ; i < new_data_1.dfrs.length ; i += 1){
         const prevRaw = new_data_1.dfrs[i].series_sum_each_arc_raw || new_data_1.dfrs[i].series_sum_each_arc || 0;
         const nextRaw = new_data_2.dfrs[i].series_sum_each_arc_raw || new_data_2.dfrs[i].series_sum_each_arc || 0;
@@ -414,6 +425,8 @@ function differenceData(new_data_1, new_data_2){
     }
 
     new_data_2.activity_count_prev = new_data_1.activity_count;
+    new_data_2.activity_count_prev_avg = prevActivityAvg;
+    new_data_2.activity_count_avg = nextActivityAvg;
     new_data_2.count_prev = countPrev;
 
     console.log(new_data_2);
@@ -483,6 +496,9 @@ function filterDataByActivitySlider(d) {
     console.log(filteredBySliders)
     filteredBySliders.activity_count = d.activity_count
     filteredBySliders.activity_count_prev = d.activity_count_prev
+    filteredBySliders.activity_count_avg = d.activity_count_avg
+    filteredBySliders.activity_count_prev_avg = d.activity_count_prev_avg
+    filteredBySliders.count_prev = d.count_prev
     console.log(filteredBySliders)
     return filteredBySliders;
 }
@@ -502,6 +518,9 @@ function filterDataByPathSlider(d) {
     filteredBySliders.dfrs = temp_dfrs
     filteredBySliders.activity_count = d.activity_count
     filteredBySliders.activity_count_prev = d.activity_count_prev
+    filteredBySliders.activity_count_avg = d.activity_count_avg
+    filteredBySliders.activity_count_prev_avg = d.activity_count_prev_avg
+    filteredBySliders.count_prev = d.count_prev
     return filteredBySliders;
   
 }
