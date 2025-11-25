@@ -1,5 +1,7 @@
 # Process Change Exploration by Version Clustering
 
+[Live demo](https://yesanton.github.io/Process-Change-Exploration-by-Version-Clustering/)
+
 Interactive exploration tool for comparing process behavior across time windows or version clusters. It renders a directly-follows graph (DFG) and a timeline panel so you can brush one or two regions, normalize counts by window totals, and immediately see how paths and activities change.
 
 > This project extends the ideas in [Process-Change-Exploration-Visualizations](https://github.com/yesanton/Process-Change-Exploration-Visualizations) with richer comparison modes, better brushing, and clearer percent/absolute views.
@@ -28,6 +30,7 @@ Interactive exploration tool for comparing process behavior across time windows 
 
 ## Usage Guide
 - **Brushing**: Drag over the bottom timeline to create a selection. Drag twice to compare two regions; selections auto-sort by time.
+- **Fine brushing**: You can brush sub-regions within a version window by pressing and dragging on the window, not just the full window span.
 - **Performance toggle**: Use the `% PERFORMANCE / ABSOLUTE PERFORMANCE` buttons to switch normalization modes in the DFG.
 - **Timeline mode**: Switch between `TIME WINDOW` and `TIME VERSION` to aggregate windows by version runs.
 - **Sliders**: Right-hand sliders limit displayed paths/activities to the most frequent ones in the current (or compared) selection.
@@ -58,6 +61,9 @@ Built as an evolution of [Process-Change-Exploration-Visualizations](https://git
   git push origin main
   ```
 - If you enable GitHub Pages, update the README with the live link.
+
+## Contact
+Questions, comments, or collaboration ideas (e.g., integrating algorithms into the visualization or co-authoring papers): reach out to Anton Yeshchenko at anton.yeshchenko@univie.ac.at.
 
 ## Notes
 - For custom datasets, keep the matrix/timestamp schemas aligned with the existing CSVs.
