@@ -1,4 +1,6 @@
 // function to initialize the dfg graph
+// configDFG ingests raw dfg data and turns it into a dagre-d3 config object.
+// It collects global stats (counts, thresholds, scales) so drawDFG can remain focused on rendering.
 function configDFG(data, opts = {}){
     // Create a new directed graph
     const nodeSet = new Set();
@@ -79,6 +81,8 @@ function configDFG(data, opts = {}){
 
 
 //function to draw dfg on 
+// computeNodeLayers assigns a rough horizontal layer to each node by walking edges
+// so dense graphs do not collapse into a single column.
 function computeNodeLayers(data) {
     const nodes = new Set();
     const edges = [];
@@ -116,6 +120,7 @@ function computeNodeLayers(data) {
 function drawDFG(data, opts = {}){     
     console.log(data)
     // initialize the dfg againt
+    // Build config first; the config captures the scale, thresholds, and base comparisons.
     config_dfg = configDFG(data, opts);
     // remove the previous plot
     d3.select("#DFGChart").selectAll("*").remove();
@@ -133,6 +138,9 @@ function drawDFG(data, opts = {}){
         const nodeDiffs = Object.keys(data.activity_count || {}).map(k => {
             const curr = data.activity_count[k] || 0;
             const prev = (data.activity_count_prev || {})[k] || 0;
+            if (mode === "absolute") {
+                return curr - prev;
+            }
             const prevAvg = (data.activity_count_prev_avg && Object.prototype.hasOwnProperty.call(data.activity_count_prev_avg, k))
                 ? data.activity_count_prev_avg[k]
                 : undefined;
@@ -143,9 +151,6 @@ function drawDFG(data, opts = {}){
             const currDen = Math.max(1, data.count_actual || data.count || prevDen);
             const prevNorm = (prevAvg !== undefined) ? prevAvg : prev / prevDen;
             const currNorm = (currAvg !== undefined) ? currAvg : curr / currDen;
-            if (mode === "absolute") {
-                return currNorm - prevNorm;
-            }
             return (prevNorm === 0) ? (currNorm > 0 ? Infinity : 0) : ((currNorm - prevNorm) / prevNorm) * 100;
         });
         const maxNodeDiff = d3.max(nodeDiffs.map(v => Math.abs(isFinite(v) ? v : 0))) || 1;
@@ -213,19 +218,19 @@ function drawDFG(data, opts = {}){
             : undefined;
         const baseVal = (config_dfg.baseActivityCounts || {})[state] || 0;
         const countBase = Math.max(1, config_dfg.baseCount || 1);
-        const prevDen = Math.max(1, data.count_prev || countBase);
-        const currDen = Math.max(1, data.count_actual || data.count || countBase);
         const mode = config_dfg.performanceMode;
         const selType = config_dfg.selectionType;
         const fmt = (v) => Math.round(v);
         let nodeDiffVal = 0;
         if (selType === "double" && data.activity_count_prev !== undefined) {
-            const prevNorm = (prevValAvg !== undefined) ? prevValAvg : prevVal / prevDen;
-            const currNorm = (currentValAvg !== undefined) ? currentValAvg : currentVal / currDen;
             if (mode === "absolute") {
-                value.label = `${state} (${fmt(currNorm)} - ${fmt(prevNorm)})`;
-                nodeDiffVal = currNorm - prevNorm;
+                value.label = `${state} (${fmt(currentVal)} - ${fmt(prevVal)})`;
+                nodeDiffVal = currentVal - prevVal;
             } else {
+                const prevDen = Math.max(1, data.count_prev || countBase);
+                const currDen = Math.max(1, data.count_actual || data.count || countBase);
+                const prevNorm = (prevValAvg !== undefined) ? prevValAvg : prevVal / prevDen;
+                const currNorm = (currentValAvg !== undefined) ? currentValAvg : currentVal / currDen;
                 const diffPercent = (prevNorm === 0)
                     ? (currNorm > 0 ? Infinity : 0)
                     : ((currNorm - prevNorm) / prevNorm) * 100;
@@ -566,6 +571,9 @@ function formatAbsChange(val) {
     return `${sign}${rounded}`;
 }
 
+// setEdgeWithParams encapsulates edge construction for both single and double selection modes.
+// In single mode it uses raw counts (or percent vs base). In double mode it renders both
+// normalized values and change labels, while keeping stroke widths coherent.
 function setEdgeWithParams(config, act1, act2, sum, sum_next, sum_prev = undefined, scaleC = undefined, diffPercent = undefined, sum_next_raw = undefined, sum_prev_raw = undefined){
     // sanitize values to avoid NaNs breaking layout
     if (!isFinite(sum)) { sum = 0; }

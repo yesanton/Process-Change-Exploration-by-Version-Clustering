@@ -3,6 +3,12 @@ let timelineDisplayMode = "timewindow";
 let lastLineplotData = null;
 let currentLineplotData = null;
 
+// This module renders the bottom timeline panel (glyphs + brushes).
+// Responsibilities:
+//   - compute glyph spans per window or per version run
+//   - render selection rectangles and allow two brushed regions
+//   - hand selection metadata back to index.js for DFG updates
+//   - keep brushes and labels within the visible chart area
 function setTimelineDisplayMode(mode) {
   if (!timelineModeOptions.includes(mode)) return;
   timelineDisplayMode = mode;
@@ -132,14 +138,28 @@ function drawLineplot(data, skipStore = false) {
     if (b === 0) return -1;
     return d3.ascending(a, b);
   });
+  const versionPaletteSafe = [
+    "#7791c9", // lively periwinkle
+    "#c98fb0", // rose quartz
+    "#d5a86f", // golden ochre
+    "#7fb9c9", // light aqua
+    "#a18cc8", // soft amethyst
+    "#84c1ad", // minty jade
+    "#cba47e", // warm latte
+    "#8facd7", // cornflower mist
+    "#b9c88e", // fresh olive
+    "#a3b9cc", // airy steel
+    "#d6d6d6"  // neutral
+  ];
   const colorRange = uniqueVersions.map((version, idx) => {
     if (version === 0) {
       return "#9d9d9d";
     }
-    if (uniqueVersions.length <= 10) {
-      return d3.schemeTableau10[idx % 10];
+    if (idx < versionPaletteSafe.length) {
+      return versionPaletteSafe[idx];
     }
-    return d3.interpolateTurbo(idx / (uniqueVersions.length - 1 || 1));
+    const hue = 198 + ((idx - versionPaletteSafe.length) * 11) % 55; // cool muted span
+    return d3.hsl(hue, 0.3, 0.6).formatHex();
   });
   const versionColorScale = d3.scaleOrdinal()
     .domain(uniqueVersions)

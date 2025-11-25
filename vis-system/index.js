@@ -1,4 +1,7 @@
 // in this file the main system is set up to be running
+// This file wires together data ingest, brushing logic, slider filtering, and
+// the DFG/linechart drawing routines. Think of it as the orchestrator that keeps
+// selections, filters, and derived metrics in sync.
 
 var position = {
     padding: 10, 
@@ -165,6 +168,10 @@ Promise.all([
 
 // this function receives the selections of the 1-2 brushes of the linechart
 // it then updates the dfg 
+// Main selection handler:
+//   - zero selections resets to the full model
+//   - one selection draws a filtered single model
+//   - two selections compute a diff model (normalized by window counts) and draw
 function updateSelection(selections_dates){
     console.log(selections_dates)
     const normalizedSelections = selections_dates.map(sel => {
@@ -405,6 +412,8 @@ function differenceData(new_data_1, new_data_2){
     const countNext = Math.max(1, new_data_2.count_actual || new_data_2.count || 1);
     const prevActivityAvg = normalizeActivityCountsMap(new_data_1.activity_count || {}, countPrev);
     const nextActivityAvg = normalizeActivityCountsMap(new_data_2.activity_count || {}, countNext);
+    // For diff mode we attach both raw and normalized values so rendering
+    // can show change labels while sizing edges by magnitude.
     for (let i = 0 ; i < new_data_1.dfrs.length ; i += 1){
         const prevRaw = new_data_1.dfrs[i].series_sum_each_arc_raw || new_data_1.dfrs[i].series_sum_each_arc || 0;
         const nextRaw = new_data_2.dfrs[i].series_sum_each_arc_raw || new_data_2.dfrs[i].series_sum_each_arc || 0;
