@@ -17,7 +17,7 @@ Interactive exploration tool for comparing process behavior across time windows 
 1. Clone the repository:
    ```bash
    git clone https://github.com/yesanton/Process-Change-Exploration-by-Version-Clustering.git
-   cd Process-Change-Exploration-by-Version-Clustering/vis-system
+   cd Process-Change-Exploration-by-Version-Clustering/docs
    ```
 2. Start a simple local server (any static server works). For example with `serve`:
    ```bash
@@ -34,13 +34,18 @@ Interactive exploration tool for comparing process behavior across time windows 
 - **Tooltips**: Hover nodes/edges to see labels; edge colors encode direction of change when comparing two brushes.
 
 ## Data & Structure
-- `vis-system/index.js` orchestrates data loading, brushing state, filtering, and redraws.
-- `vis-system/dfg/main-dfg.js` renders the directly-follows graph and computes node/edge diffs.
-- `vis-system/linechart/multiple-bushes.js` draws the timeline, glyphs, and handles brush interactions.
-- CSV inputs live in `vis-system/data/`; swap them with your own log-derived matrices to explore different processes.
+- `docs/index.js` orchestrates data loading, brushing state, filtering, and redraws.
+- `docs/dfg/main-dfg.js` renders the directly-follows graph and computes node/edge diffs.
+- `docs/linechart/multiple-bushes.js` draws the timeline, glyphs, and handles brush interactions.
+- CSV inputs live in `docs/data/`; swap them with your own log-derived matrices to explore different processes.
 
 ## Screenshot
-Place the provided screenshot at `docs/screenshot.png` (create the `docs/` folder if it does not exist) so it appears in the README. You can export your own by taking a browser screenshot and saving it to that path.
+Replace `examples/pce-version-clustering.png` with your own screenshot and keep the README image path pointing to it.
+
+## Live Demo (GitHub Pages)
+- Push the repo to GitHub on `main`.
+- In **Settings → Pages**, choose **Deploy from a branch**, set **Branch** to `main` and **Folder** to `/docs`, then Save.
+- Wait for the deployment to finish; GitHub will give you the live URL (typically `https://<user>.github.io/Process-Change-Exploration-by-Version-Clustering/`).
 
 ## Relationship to Prior Work
 Built as an evolution of [Process-Change-Exploration-Visualizations](https://github.com/yesanton/Process-Change-Exploration-Visualizations), adding more robust normalization, dual brushing, and UI refinements for drift/version exploration.
