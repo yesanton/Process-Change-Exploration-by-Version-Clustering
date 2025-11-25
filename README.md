@@ -42,12 +42,6 @@ Interactive exploration tool for comparing process behavior across time windows 
 ## Screenshot
 Place the provided screenshot at `docs/screenshot.png` (create the `docs/` folder if it does not exist) so it appears in the README. You can export your own by taking a browser screenshot and saving it to that path.
 
-## Live Demo (optional)
-You can host the static site on GitHub Pages:
-1. Push the repo to GitHub.
-2. Enable Pages in repository settings with the `vis-system` folder (or root) as the source.
-3. Visit the published URL to interact with the visualization without local setup.
-
 ## Relationship to Prior Work
 Built as an evolution of [Process-Change-Exploration-Visualizations](https://github.com/yesanton/Process-Change-Exploration-Visualizations), adding more robust normalization, dual brushing, and UI refinements for drift/version exploration.
 
